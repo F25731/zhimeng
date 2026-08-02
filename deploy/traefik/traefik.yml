@@ -1,0 +1,13 @@
+entryPoints:
+  web:
+    address: ":80"
+    forwardedHeaders:
+      trustedIPs:
+        - "192.0.2.10/32"
+
+providers:
+  docker:
+    exposedByDefault: false
+
+api:
+  dashboard: false

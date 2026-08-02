@@ -1,0 +1,81 @@
+services:
+  app:
+    image: ${VOZEB_PRO_IMAGE}
+    container_name: site-{{ .SiteID }}-app
+    environment:
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      VOZEB_PRO_DATABASE_PROVIDER: ${VOZEB_PRO_DATABASE_PROVIDER}
+      DATABASE_URL: ${SITE_DATABASE_URL}
+      VOZEB_PRO_ENCRYPTION_KEY: ${VOZEB_PRO_ENCRYPTION_KEY}
+      VOZEB_PRO_MAINTENANCE_TOKEN: ${VOZEB_PRO_MAINTENANCE_TOKEN}
+      VOZEB_PRO_TRUSTED_PROXY_HOPS: ${VOZEB_PRO_TRUSTED_PROXY_HOPS}
+      VOZEB_PRO_INTERNAL_ORIGIN: ${VOZEB_PRO_INTERNAL_ORIGIN}
+      SITE_STORAGE_PREFIX: ${SITE_STORAGE_PREFIX}
+    labels:
+      - traefik.enable={{ .RouteEnabled }}
+      - traefik.http.routers.site-{{ .SiteID }}.rule=Host(`{{ .Domain }}`)
+      - traefik.http.routers.site-{{ .SiteID }}.entrypoints=web
+      - traefik.http.routers.site-{{ .SiteID }}.middlewares=site-{{ .SiteID }}-identity
+      - traefik.http.services.site-{{ .SiteID }}.loadbalancer.server.port=3000
+      - traefik.http.middlewares.site-{{ .SiteID }}-identity.headers.customresponseheaders.X-Control-Site-ID={{ .SiteID }}
+      - traefik.docker.network={{ .DockerNetwork }}
+    networks:
+      - proxy
+      - database
+    volumes:
+      - site-data:/app/web/.data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  worker:
+    image: ${VOZEB_PRO_IMAGE}
+    container_name: site-{{ .SiteID }}-worker
+    command: ["node", "/app/web/scripts/generation-worker.mjs"]
+    environment:
+      VOZEB_PRO_MAINTENANCE_TOKEN: ${VOZEB_PRO_MAINTENANCE_TOKEN}
+      VOZEB_PRO_WORKER_API_ORIGIN: ${VOZEB_PRO_WORKER_API_ORIGIN}
+    networks:
+      - proxy
+      - database
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reporter:
+    image: ${REPORTER_IMAGE}
+    container_name: site-{{ .SiteID }}-reporter
+    entrypoint: ["/app/control-reporter"]
+    environment:
+      DATABASE_URL: ${SITE_DATABASE_URL}
+      CONTROL_CENTER_URL: ${CONTROL_CENTER_URL}
+      CONTROL_SITE_ID: ${CONTROL_SITE_ID}
+      CONTROL_SITE_TOKEN: ${CONTROL_SITE_TOKEN}
+      CONTROL_REPORT_INTERVAL_SECONDS: ${CONTROL_REPORT_INTERVAL_SECONDS}
+      SITE_VERSION: ${SITE_VERSION}
+      SITE_DATABASE_TABLE_PREFIX: ${SITE_DATABASE_TABLE_PREFIX}
+      REPORT_APP_URL: http://app:3000
+    networks:
+      - proxy
+      - database
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
+    name: {{ .DockerNetwork }}
+  database:
+    external: true
+    name: {{ .DatabaseNetwork }}
+
+volumes:
+  site-data:
+    name: site-{{ .SiteID }}-data

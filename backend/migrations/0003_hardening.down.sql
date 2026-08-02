@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS idx_active_site_operation;
+DROP TABLE IF EXISTS site_daily_metrics;
+DROP TABLE IF EXISTS admin_login_attempts;
+DROP TABLE IF EXISTS report_nonces;
+ALTER TABLE sites DROP COLUMN IF EXISTS activated_at;
+ALTER TABLE sites DROP COLUMN IF EXISTS last_error_message;
+ALTER TABLE sites DROP COLUMN IF EXISTS last_error_code;
+ALTER TABLE deployment_nodes DROP COLUMN IF EXISTS last_error;
+DROP INDEX IF EXISTS idx_deployment_nodes_name_unique;
+ALTER TABLE deployment_nodes DROP COLUMN IF EXISTS docker_version;

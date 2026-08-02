@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: control_center
+      POSTGRES_USER: control
+      POSTGRES_PASSWORD: control_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - control-center-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control -d control_center"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - control-center-minio:/data
+
+  migrate:
+    image: migrate/migrate:v4.18.1
+    command: ["-path", "/migrations", "-database", "postgres://control:control_password@postgres:5432/control_center?sslmode=disable", "up"]
+    volumes:
+      - ../backend/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  control-center-postgres:
+  control-center-minio:

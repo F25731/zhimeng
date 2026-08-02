@@ -1,0 +1,93 @@
+services:
+  control-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - control-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [control-private]
+
+  control-migrate:
+    image: migrate/migrate:v4.18.1
+    command: ["-path", "/migrations", "-database", "${DATABASE_URL}", "up"]
+    volumes:
+      - ../backend/migrations:/migrations:ro
+    depends_on:
+      control-postgres:
+        condition: service_healthy
+    networks: [control-private]
+
+  control-api:
+    build:
+      context: ../backend
+    image: zhimeng-control-backend:local
+    entrypoint: ["/app/control-api"]
+    user: control
+    restart: unless-stopped
+    env_file: ../.env.production
+    depends_on:
+      control-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - control-uploads:/app/uploads
+    networks: [control-private]
+
+  control-agent:
+    image: zhimeng-control-backend:local
+    entrypoint: ["/app/control-agent"]
+    restart: unless-stopped
+    env_file: ../.env.production
+    depends_on:
+      control-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/platform/sites:/opt/platform/sites
+      - ../deploy/templates:/app/templates:ro
+    networks: [control-private, platform-proxy]
+
+  control-web:
+    build:
+      context: ../frontend
+      args:
+        VITE_ROOT_DOMAIN: ${ROOT_DOMAIN}
+    restart: unless-stopped
+    ports:
+      - "19540:80"
+    depends_on: [control-api]
+    networks: [control-private]
+
+  site-router:
+    image: traefik:v3.6.16
+    restart: unless-stopped
+    environment:
+      DOCKER_API_VERSION: "1.40"
+    command: ["--configFile=/etc/traefik/traefik.yml"]
+    ports:
+      - "${SITE_ROUTER_PORT:-19541}:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+    networks: [platform-proxy]
+
+volumes:
+  control-postgres-data:
+    name: zhimeng-control-postgres-data
+  control-uploads:
+    name: zhimeng-control-uploads
+
+networks:
+  control-private:
+    name: zhimeng-control-private
+    driver: bridge
+  platform-proxy:
+    name: platform-proxy
+    external: true

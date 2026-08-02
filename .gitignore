@@ -1,0 +1,29 @@
+# Runtime configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Backend runtime data
+backend/uploads/
+uploads/
+*.log
+*.pid
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Local test and packaging output
+.playwright-cli/
+output/
+*.tgz
+*.tar.gz
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

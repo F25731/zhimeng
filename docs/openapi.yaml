@@ -1,0 +1,192 @@
+openapi: 3.0.3
+info:
+  title: 分站总控系统 API
+  version: 1.0.0
+  description: 客户自助开站、管理员运维与分站内部上报接口。
+servers:
+  - url: /api
+tags:
+  - { name: Public, description: 客户开站接口 }
+  - { name: Admin, description: 总控后台接口 }
+  - { name: Reports, description: 分站签名上报接口 }
+paths:
+  /health/live:
+    get: { summary: 进程存活检查, responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /health/ready:
+    get: { summary: 数据库就绪检查, responses: { "200": { $ref: "#/components/responses/Success" }, "503": { $ref: "#/components/responses/Error" } } }
+  /public/provision/codes/verify:
+    post:
+      tags: [Public]
+      summary: 验证卡密并创建 30 分钟开站会话
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string, example: SITE-7KF3-N8PW-4YCR-X2MT } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" }, "429": { $ref: "#/components/responses/Error" } }
+  /public/provision/domain/check:
+    post:
+      tags: [Public]
+      summary: 检查并保留子域 20 分钟
+      security: [{ provisionSession: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [prefix], properties: { prefix: { type: string, pattern: "^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$" } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" } }
+  /public/provision/logo/upload:
+    post:
+      tags: [Public]
+      summary: 上传 PNG/JPEG/WebP Logo，最大 1 MB
+      security: [{ provisionSession: [] }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" } }
+  /public/provision/jobs:
+    post:
+      tags: [Public]
+      summary: 创建真实开站任务
+      security: [{ provisionSession: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateSiteRequest" } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" } }
+  /public/provision/jobs/{id}:
+    get:
+      tags: [Public]
+      summary: 查询开站任务
+      security: [{ provisionSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses: { "200": { $ref: "#/components/responses/Success" }, "401": { $ref: "#/components/responses/Error" } }
+  /public/provision/jobs/{id}/events:
+    get:
+      tags: [Public]
+      summary: 可恢复 SSE 开站进度
+      security: [{ provisionQuerySession: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: Last-Event-ID, in: header, schema: { type: integer } }
+      responses: { "200": { description: text/event-stream } }
+  /public/provision/jobs/{id}/retry:
+    post:
+      tags: [Public]
+      summary: 重试绑定卡密的失败任务
+      security: [{ provisionSession: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" } }
+  /admin/auth/login:
+    post:
+      tags: [Admin]
+      summary: 管理员登录
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string, format: password } } } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "401": { $ref: "#/components/responses/Error" }, "429": { $ref: "#/components/responses/Error" } }
+  /admin/auth/me:
+    get: { tags: [Admin], summary: 当前管理员和 CSRF token, security: [{ adminSession: [] }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/auth/logout:
+    post: { tags: [Admin], summary: 注销管理员会话, security: [{ adminSession: [], csrf: [] }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/dashboard:
+    get: { tags: [Admin], summary: 总控汇总、趋势、异常站点和最近任务, security: [{ adminSession: [] }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/codes:
+    get: { tags: [Admin], summary: 分页查询卡密, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Status" }, { $ref: "#/components/parameters/Query" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+    post:
+      tags: [Admin]
+      summary: 批量创建卡密，明文仅返回一次
+      security: [{ adminSession: [], csrf: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateCodesRequest" } } } }
+      responses: { "200": { $ref: "#/components/responses/Success" } }
+  /admin/codes/export:
+    get: { tags: [Admin], summary: 导出脱敏卡密列表 CSV, security: [{ adminSession: [] }], responses: { "200": { description: CSV 文件 } } }
+  /admin/codes/{id}/revoke:
+    post: { tags: [Admin], summary: 撤销卡密, security: [{ adminSession: [], csrf: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/codes/{id}:
+    delete: { tags: [Admin], summary: 删除未使用卡密, security: [{ adminSession: [], csrf: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/sites:
+    get: { tags: [Admin], summary: 分页查询分站与最新快照, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Status" }, { $ref: "#/components/parameters/Query" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/sites/{id}:
+    get: { tags: [Admin], summary: 分站详情, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/sites/{id}/metrics:
+    get: { tags: [Admin], summary: 分站运营快照, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/sites/{id}/channels:
+    get: { tags: [Admin], summary: 最新脱敏渠道快照, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/sites/{id}/{action}:
+    post:
+      tags: [Admin]
+      summary: 创建启停、重启、冻结、备份或升级任务
+      security: [{ adminSession: [], csrf: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [start, stop, restart, freeze, unfreeze, backup, upgrade] } }
+        - { name: version, in: query, schema: { type: string } }
+      responses: { "200": { $ref: "#/components/responses/Success" }, "400": { $ref: "#/components/responses/Error" } }
+  /admin/jobs:
+    get: { tags: [Admin], summary: 分页筛选任务, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Status" }, { $ref: "#/components/parameters/Query" }, { name: type, in: query, schema: { type: string } }, { name: siteId, in: query, schema: { type: string, format: uuid } }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/jobs/{id}:
+    get: { tags: [Admin], summary: 任务详情, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/jobs/{id}/events:
+    get: { tags: [Admin], summary: 后台任务 SSE, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Id" }, { name: Last-Event-ID, in: header, schema: { type: integer } }], responses: { "200": { description: text/event-stream } } }
+  /admin/jobs/{id}/retry:
+    post: { tags: [Admin], summary: 重试失败任务, security: [{ adminSession: [], csrf: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/versions:
+    get: { tags: [Admin], summary: 查询发布版本, security: [{ adminSession: [] }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+    post: { tags: [Admin], summary: 登记版本草稿, security: [{ adminSession: [], csrf: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateVersionRequest" } } } }, responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/versions/{id}/publish:
+    post: { tags: [Admin], summary: 发布版本, security: [{ adminSession: [], csrf: [] }], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/nodes:
+    get: { tags: [Admin], summary: 部署节点状态, security: [{ adminSession: [] }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /admin/audit:
+    get: { tags: [Admin], summary: 分页筛选审计日志, security: [{ adminSession: [] }], parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Query" }, { name: action, in: query, schema: { type: string } }], responses: { "200": { $ref: "#/components/responses/Success" } } }
+  /internal/sites/heartbeat:
+    post: { tags: [Reports], summary: 签名心跳上报, security: [{ siteSignature: [] }], responses: { "200": { $ref: "#/components/responses/Success" }, "401": { $ref: "#/components/responses/Error" } } }
+  /internal/sites/metrics:
+    post: { tags: [Reports], summary: 签名运营快照上报, security: [{ siteSignature: [] }], responses: { "200": { $ref: "#/components/responses/Success" }, "401": { $ref: "#/components/responses/Error" } } }
+  /internal/sites/channels:
+    post: { tags: [Reports], summary: 签名脱敏渠道快照上报, security: [{ siteSignature: [] }], responses: { "200": { $ref: "#/components/responses/Success" }, "401": { $ref: "#/components/responses/Error" } } }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    Status: { name: status, in: query, schema: { type: string } }
+    Query: { name: query, in: query, schema: { type: string } }
+  securitySchemes:
+    adminSession: { type: apiKey, in: cookie, name: control_admin_session }
+    csrf: { type: apiKey, in: header, name: X-CSRF-Token }
+    provisionSession: { type: apiKey, in: header, name: X-Provision-Token }
+    provisionQuerySession: { type: apiKey, in: query, name: token }
+    siteSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: 同时提交 X-Site-Id、X-Timestamp、X-Nonce；HMAC-SHA256 签名六段规范字符串。
+  responses:
+    Success:
+      description: 成功
+      content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
+    Error:
+      description: 失败
+      content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
+  schemas:
+    Envelope:
+      type: object
+      required: [code, message]
+      properties: { code: { type: integer, example: 0 }, message: { type: string }, data: { nullable: true } }
+    CreateSiteRequest:
+      type: object
+      required: [reservationId, prefix, name, adminUsername, adminPassword]
+      properties:
+        reservationId: { type: string, format: uuid, description: 域名检查接口返回的保留凭证 }
+        prefix: { type: string, minLength: 3, maxLength: 32 }
+        name: { type: string, minLength: 2, maxLength: 128 }
+        logoUrl: { type: string, description: 仅接受总控 /uploads/ 下的 URL }
+        adminUsername: { type: string, minLength: 4, maxLength: 32 }
+        adminPassword: { type: string, format: password, minLength: 10 }
+    CreateCodesRequest:
+      type: object
+      required: [remark, quantity, maxSites]
+      properties:
+        remark: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 1000 }
+        maxSites: { type: integer, minimum: 1, maximum: 100 }
+        initialVersion: { type: string, default: latest }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    CreateVersionRequest:
+      type: object
+      required: [version, image, channel]
+      properties:
+        version: { type: string }
+        image: { type: string }
+        channel: { type: string, enum: [stable, beta, canary] }
+        migrationVersion: { type: string }
+        minUpgradeVersion: { type: string }
+        releaseNotes: { type: string }
+        forceUpgrade: { type: boolean }

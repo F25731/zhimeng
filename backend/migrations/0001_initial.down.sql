@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS deployment_job_events;
+DROP TABLE IF EXISTS deployment_jobs;
+DROP TABLE IF EXISTS site_secrets;
+DROP TABLE IF EXISTS sites;
+DROP TABLE IF EXISTS deployment_nodes;
+DROP TABLE IF EXISTS domain_reservations;
+DROP TABLE IF EXISTS provision_sessions;
+DROP TABLE IF EXISTS provision_codes;
+DROP TABLE IF EXISTS admin_sessions;
+DROP TABLE IF EXISTS admin_users;
